@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=DiscFilter
+Comment=Automate CD Tasks
+Exec=/home/rumen/Desktop/MRI/disk-operation.sh
+Icon=utilities-terminal
+Terminal=false
+
