@@ -1,17 +1,31 @@
 #!/bin/bash
 
+DIR="/home/rumen/Desktop/MRI"
+sleep 5
+cd_device=$(lsblk -no NAME,TYPE | grep 'rom' | awk '{print $1}')
+
 cleanup() {
-    # This function will be called if the script exits prematurely
-    echo "Removing mounted disc from /media/disc"
-    pkexec umount /media/disc 2>/dev/null
+    # Check if the disc is mounted
+    if grep -qs '/media/disc' /proc/mounts; then
+        echo "Removing mounted disc from /media/disc"
+        pkexec umount /media/disc || error_exit "Failed to unmount disc"
+    fi
+
+    echo "Removing $DIR/images/*, $DIR/denoised/*, and $DIR/CD-DATA/*"
+    pkexec rm -rf "$DIR/images/*" "$DIR/denoised/*" "$DIR/CD-DATA/*"
+
+    # Attempt to eject the disc only if it's present
+    if [ -b /dev/$cd_device ]; then
+        eject /dev/$cd_device || error_exit "Failed to eject disc"
+    fi
 }
+
+
 
 function error_exit {
     zenity --error --width=300 --text="$1"
     exit 1
 }
-
-DIR="/home/rumen/Desktop/MRI"
 
 # Trap the cleanup function on signals: exit, SIGINT, SIGTERM
 trap cleanup EXIT SIGINT SIGTERM
@@ -21,9 +35,7 @@ zenity --info --width=300 --text="Starting the automation process..."
 
 # Mount the inserted disc to a location
 mkdir -p /media/disc
-sudo mount -o uid=$(id -u),gid=$(id -g),dmask=022,fmask=133 /dev/sr0 /media/disc || error_exit "Failed to mount the disc."
-
-
+pkexec mount -o uid=$(id -u),gid=$(id -g),dmask=022,fmask=133 /dev/sr0 /media/disc || error_exit "Failed to mount the disc."
 
 
 echo "Removing $DIR/images/* and $DIR/denoised/*"
@@ -39,6 +51,7 @@ cp --no-preserve=mode -R /media/disc/* "$DIR/images" || error_exit "Failed to co
 
 # Unmount the disc
 pkexec umount /media/disc || error_exit "Failed to unmount the disc."
+eject /dev/$cd_device || error_exit "Failed to eject disc"
 
 echo "Changing directory"
 cd $DIR || error_exit "Failed to change directory."
@@ -89,7 +102,7 @@ mkisofs -o /tmp/new_disc.iso "$DIR/CD-DATA/" || error_exit "Failed to create an 
 
 # Burn the ISO to the new disc
 cdrecord -v dev=/dev/sr0 /tmp/new_disc.iso || error_exit "Failed to burn the ISO to the new disc."
-sudo chown rumen:rumen /tmp/new_disc.iso
+pkexec chown rumen:rumen /tmp/new_disc.iso
 chmod 644 /tmp/new_disc.iso
 
 # Notify completion
