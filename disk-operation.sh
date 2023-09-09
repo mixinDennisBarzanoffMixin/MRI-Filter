@@ -1,23 +1,26 @@
 #!/bin/bash
 
 DIR="/home/rumen/Desktop/MRI"
-sleep 5
+sleep 1
 cd_device=$(lsblk -no NAME,TYPE | grep 'rom' | awk '{print $1}')
 
+
+if [[ $EUID -ne 0 ]]; then
+    # give the script access to the display server
+    xhost +local:
+    DISPLAY=:0 pkexec env DISPLAY=$DISPLAY bash "$DIR/$0"
+    exit
+fi
+
 cleanup() {
-    # Check if the disc is mounted
     if grep -qs '/media/disc' /proc/mounts; then
         echo "Премахване на монтирания диск от /media/disc"
-        pkexec umount /media/disc || error_exit "Неуспешно демонтиране на диска."
+        umount /media/disc || error_exit "Неуспешно демонтиране на диска."
     fi
-
-    echo "Премахване на $DIR/images/*, $DIR/denoised/*, и $DIR/CD-DATA/*"
-    pkexec rm -rf "$DIR/images/*" 
-    pkexec rm -rf "$DIR/denoised/*"
-    pkexec rm -rf "$DIR/CD-DATA/*"
-
     # Attempt to eject the disc only if it's present
     if [ -b /dev/$cd_device ]; then
+	sleep 2
+	echo "ejecting cd device /dev/$cd_device"
         eject /dev/$cd_device || error_exit "Неуспешно изваждане на диска."
     fi
 }
@@ -27,22 +30,29 @@ error_exit() {
     exit 1
 }
 
+# Delete whole directories
+echo "Премахване на $DIR/images, $DIR/denoised, и $DIR/CD-DATA"
+
+rm -rf "$DIR/images"
+rm -rf "$DIR/denoised"
+rm -rf "$DIR/CD-DATA"
+
+mkdir -p "$DIR/images" "$DIR/denoised" "$DIR/CD-DATA"
+
 trap cleanup EXIT SIGINT SIGTERM
 
 zenity --info --width=300 --text="Започване на автоматизирания процес..."
 
 mkdir -p /media/disc
-pkexec mount -o uid=$(id -u),gid=$(id -g),dmask=022,fmask=133 /dev/sr0 /media/disc || error_exit "Неуспешно монтиране на диска."
+sleep 3
+mount -o uid=$(id -u),gid=$(id -g),dmask=022,fmask=133 /dev/sr0 /media/disc || error_exit "Неуспешно монтиране на диска."
 
-echo "Премахване на $DIR/images/* и $DIR/denoised/*"
-pkexec rm -rf "$DIR/denoised/*" || error_exit "Неуспешно премахване на дешумените файлове."
-pkexec rm -rf "$DIR/images/*" || error_exit "Неуспешно премахване на изображенията."
-pkexec rm -rf "$DIR/CD-DATA/*" || error_exit "Неуспешно премахване на изображенията."
 
 echo "Преместване на данни към MRI директорията на работния плот"
 cp --no-preserve=mode -R /media/disc/* "$DIR/images" || error_exit "Неуспешно копиране на данни от диска към MRI директория."
 
-pkexec umount /media/disc || error_exit "Неуспешно демонтиране на диска."
+umount /media/disc || error_exit "Неуспешно демонтиране на диска."
+echo "eject: /dev/$cd_device"
 eject /dev/$cd_device || error_exit "Неуспешно изваждане на диска."
 
 cd $DIR || error_exit "Неуспешно променяне на директорията."
@@ -54,6 +64,7 @@ pip3 install -r requirements.txt
 python3 denoise.py images/ || error_exit "Грешка при стартиране на denoise.py."
 
 cp -R denoised/* CD-DATA/ || error_exit "Неуспешно копиране на дешумените данни към CD-DATA."
+cp -R VIEWER2/* CD-DATA/ || error_exit "Неуспешно копиране на VIEWER към CD-DATA."
 
 while true; do
     zenity --question --width=300 --text="Моля, поставете нов записващ диск и натиснете OK."
@@ -76,16 +87,16 @@ while true; do
     fi
 done
 
-
-mkisofs -o -J -R -l -V "MBALLOM" /tmp/new_disc.iso "$DIR/CD-DATA/" || error_exit "Неуспешно създаване на ISO."
+mkisofs -J -R -l -V "MBALLOM" -o /tmp/new_disc.iso "$DIR/CD-DATA/" || error_exit "Неуспешно създаване на ISO."
 
 sleep 3
 
 cdrecord -v dev=/dev/sr0 /tmp/new_disc.iso || error_exit "Грешка при записване на ISO на новия диск."
 
-pkexec chown rumen:rumen /tmp/new_disc.iso
+chown rumen:rumen /tmp/new_disc.iso
 chmod 644 /tmp/new_disc.iso
 
 zenity --info --width=300 --text="Процесът завърши успешно."
 
-rm /tmp/new_disc.iso || error_exit "Грешка при премахване на временния ISO."
+/bin/rm /tmp/new_disc.iso || error_exit "Грешка при премахване на временния ISO."
+
