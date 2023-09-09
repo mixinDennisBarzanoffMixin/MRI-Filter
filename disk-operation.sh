@@ -12,7 +12,9 @@ cleanup() {
     fi
 
     echo "Премахване на $DIR/images/*, $DIR/denoised/*, и $DIR/CD-DATA/*"
-    pkexec rm -rf "$DIR/images/*" "$DIR/denoised/*" "$DIR/CD-DATA/*"
+    pkexec rm -rf "$DIR/images/*" 
+    pkexec rm -rf "$DIR/denoised/*"
+    pkexec rm -rf "$DIR/CD-DATA/*"
 
     # Attempt to eject the disc only if it's present
     if [ -b /dev/$cd_device ]; then
@@ -33,8 +35,9 @@ mkdir -p /media/disc
 pkexec mount -o uid=$(id -u),gid=$(id -g),dmask=022,fmask=133 /dev/sr0 /media/disc || error_exit "Неуспешно монтиране на диска."
 
 echo "Премахване на $DIR/images/* и $DIR/denoised/*"
-rm -rf "$DIR/denoised/*" || error_exit "Неуспешно премахване на дешумените файлове."
-rm -rf "$DIR/images/*" || error_exit "Неуспешно премахване на изображенията."
+pkexec rm -rf "$DIR/denoised/*" || error_exit "Неуспешно премахване на дешумените файлове."
+pkexec rm -rf "$DIR/images/*" || error_exit "Неуспешно премахване на изображенията."
+pkexec rm -rf "$DIR/CD-DATA/*" || error_exit "Неуспешно премахване на изображенията."
 
 echo "Преместване на данни към MRI директорията на работния плот"
 cp --no-preserve=mode -R /media/disc/* "$DIR/images" || error_exit "Неуспешно копиране на данни от диска към MRI директория."
@@ -74,7 +77,7 @@ while true; do
 done
 
 
-mkisofs -o /tmp/new_disc.iso "$DIR/CD-DATA/" || error_exit "Неуспешно създаване на ISO."
+mkisofs -o -J -R -l -V "MBALLOM" /tmp/new_disc.iso "$DIR/CD-DATA/" || error_exit "Неуспешно създаване на ISO."
 
 sleep 3
 
